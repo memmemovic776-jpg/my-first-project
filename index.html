@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="ru" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpeechStudio — Озвучка и Клонирование голоса</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f5ff',
+                            100: '#e0ebff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.5);
+            border-radius: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.8);
+        }
+
+        .highlight-word {
+            background-color: rgba(99, 102, 241, 0.4);
+            color: #ffffff;
+            border-radius: 4px;
+            padding: 0 2px;
+            box-shadow: 0 0 8px rgba(99, 102, 241, 0.6);
+            transition: all 0.1s ease;
+        }
+
+        .bar {
+            width: 4px;
+            height: 100%;
+            background: #6366f1;
+            border-radius: 3px;
+        }
+        .speaking .bar {
+            animation: wave 1.2s ease-in-out infinite alternate;
+        }
+        .speaking .bar:nth-child(1) { animation-delay: 0.1s; }
+        .speaking .bar:nth-child(2) { animation-delay: 0.3s; }
+        .speaking .bar:nth-child(3) { animation-delay: 0.5s; }
+        .speaking .bar:nth-child(4) { animation-delay: 0.2s; }
+        .speaking .bar:nth-child(5) { animation-delay: 0.4s; }
+
+        @keyframes wave {
+            0% { height: 15%; }
+            100% { height: 100%; }
+        }
+
+        .tab-btn.active {
+            background-color: rgba(99, 102, 241, 0.2);
+            border-color: rgba(99, 102, 241, 0.8);
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
+
+    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                    <i class="fa-solid fa-microphone-lines text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-indigo-200 bg-clip-text text-transparent">
+                        SpeechStudio
+                    </h1>
+                    <p class="text-xs text-slate-400">Озвучка и Синтез Голоса</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button id="downloadHtmlBtn" class="flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 hover:text-white rounded-lg border border-slate-700 transition">
+                    <i class="fa-solid fa-download"></i>
+                    <span class="hidden sm:inline">Скачать HTML</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full flex flex-col gap-6">
+        
+        <!-- Environment Protocol Banner Notice -->
+        <div id="protocolBanner" class="hidden glass-panel border-amber-500/40 bg-amber-950/20 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-200 text-xs sm:text-sm">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-triangle-exclamation text-amber-400 text-xl flex-shrink-0"></i>
+                <div>
+                    <strong class="font-semibold block text-amber-300">Файл открыт локально (протокол file:// или content://)</strong>
+                    <span>Браузер может заблокировать прямой доступ к микрофону. Для записи используйте HTTP-сервер или загрузите файл .mp3/.wav ниже.</span>
+                </div>
+            </div>
+            <button id="openServerHelpBtn" class="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 rounded-lg text-xs font-medium transition whitespace-nowrap self-end sm:self-auto">
+                <i class="fa-solid fa-circle-info"></i> Инструкция
+            </button>
+        </div>
+
+        <!-- Mode Switcher Navigation -->
+        <div class="glass-panel p-2 rounded-2xl flex items-center gap-2 max-w-md mx-auto w-full">
+            <button id="tabTts" class="tab-btn active flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold border border-transparent text-slate-400 hover:text-slate-200 transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-volume-high"></i> Стандартный TTS
+            </button>
+            <button id="tabClone" class="tab-btn flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-semibold border border-transparent text-slate-400 hover:text-slate-200 transition flex items-center justify-center gap-2">
+                <i class="fa-solid fa-record-vinyl text-red-400"></i> Мой Голос / Клон
+            </button>
+        </div>
+
+        <div id="sectionTts" class="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full">
+            <section class="lg:col-span-7 flex flex-col gap-4">
+                <div class="glass-panel p-4 rounded-2xl flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-2 flex items-center gap-1">
+                        <i class="fa-solid fa-wand-magic-sparkles text-indigo-400"></i> Шаблоны:
+                    </span>
+                    <button class="preset-btn text-xs px-3 py-1.5 bg-slate-800/80 hover:bg-indigo-600/30 hover:border-indigo-500 border border-slate-700 rounded-lg text-slate-300 transition" data-preset="greeting">👋 Приветствие</button>
+                    <button class="preset-btn text-xs px-3 py-1.5 bg-slate-800/80 hover:bg-indigo-600/30 hover:border-indigo-500 border border-slate-700 rounded-lg text-slate-300 transition" data-preset="tongueTwister">👅 Скороговорка</button>
+                    <button class="preset-btn text-xs px-3 py-1.5 bg-slate-800/80 hover:bg-indigo-600/30 hover:border-indigo-500 border border-slate-700 rounded-lg text-slate-300 transition" data-preset="english">🇬🇧 English</button>
+                </div>
+
+                <div class="glass-panel rounded-2xl p-4 flex flex-col flex-1 relative shadow-xl min-h-[320px]">
+                    <div class="relative flex-1 w-full mb-3">
+                        <div id="highlightDisplay" class="absolute inset-0 p-3 text-base sm:text-lg leading-relaxed text-slate-300 overflow-y-auto custom-scrollbar whitespace-pre-wrap pointer-events-none hidden font-normal"></div>
+                        <textarea id="textInput" class="w-full h-full p-3 bg-transparent text-base sm:text-lg leading-relaxed text-slate-100 placeholder-slate-500 focus:outline-none resize-none custom-scrollbar font-normal" placeholder="Введите текст для обычной озвучки..." spellcheck="false"></textarea>
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-400 gap-2">
+                        <div class="flex items-center gap-4">
+                            <span>Символов: <strong id="charCount" class="text-slate-200">0</strong></span>
+                            <span>Слов: <strong id="wordCount" class="text-slate-200">0</strong></span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button id="pasteBtn" class="px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center gap-1.5"><i class="fa-regular fa-clipboard"></i> Вставить</button>
+                            <button id="clearBtn" class="px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-red-900/40 hover:text-red-300 text-slate-300 transition flex items-center gap-1.5"><i class="fa-regular fa-trash-can"></i> Очистить</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+                    <div class="flex items-center gap-3 w-full sm:w-auto justify-center sm:justify-start">
+                        <div id="visualizer" class="flex items-center justify-center gap-1 h-8 w-16">
+                            <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+                        </div>
+                        <span id="statusBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 font-medium border border-slate-700">Готов к работе</span>
+                    </div>
+
+                    <div class="flex items-center gap-2 w-full sm:w-auto justify-center">
+                        <button id="speakBtn" class="flex-1 sm:flex-initial px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold shadow-lg shadow-indigo-600/30 active:scale-95 transition-all flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-play"></i> Озвучить
+                        </button>
+                        <button id="pauseBtn" disabled class="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-medium border border-slate-700 transition">
+                            <i class="fa-solid fa-pause"></i>
+                        </button>
+                        <button id="stopBtn" disabled class="px-4 py-3 rounded-xl bg-slate-800 hover:bg-red-900/30 hover:border-red-600/50 hover:text-red-300 disabled:opacity-40 text-slate-200 font-medium border border-slate-700 transition">
+                            <i class="fa-solid fa-square"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="lg:col-span-5 flex flex-col gap-6">
+                <div class="glass-panel p-6 rounded-2xl flex flex-col gap-5 shadow-xl">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+                        <h2 class="text-base font-semibold text-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-indigo-400"></i> Параметры Голоса
+                        </h2>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="text-xs font-medium text-slate-300 flex items-center gap-1.5"><i class="fa-solid fa-globe text-slate-400"></i> Язык</label>
+                        <select id="langSelect" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-xl p-3 focus:outline-none focus:border-indigo-500 transition">
+                            <option value="all">Все языки</option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="text-xs font-medium text-slate-300 flex items-center gap-1.5"><i class="fa-solid fa-user text-slate-400"></i> Системный Голос</label>
+                        <select id="voiceSelect" class="w-full bg-slate-900 border border-slate-700 text-slate-200 text-sm rounded-xl p-3 focus:outline-none focus:border-indigo-500 transition">
+                            <option value="">Загрузка голосов...</option>
+                        </select>
+                    </div>
+
+                    <div class="space-y-4 pt-2">
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-300 font-medium">Скорость (Rate)</span>
+                                <span id="rateValue" class="text-indigo-400 font-bold">1.0x</span>
+                            </div>
+                            <input type="range" id="rate" min="0.5" max="2" value="1" step="0.1" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg cursor-pointer">
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-300 font-medium">Тон (Pitch)</span>
+                                <span id="pitchValue" class="text-indigo-400 font-bold">1.0</span>
+                            </div>
+                            <input type="range" id="pitch" min="0.5" max="1.5" value="1" step="0.1" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg cursor-pointer">
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-300 font-medium">Громкость</span>
+                                <span id="volumeValue" class="text-indigo-400 font-bold">100%</span>
+                            </div>
+                            <input type="range" id="volume" min="0" max="1" value="1" step="0.05" class="w-full accent-indigo-500 bg-slate-800 h-2 rounded-lg cursor-pointer">
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div id="sectionClone" class="grid grid-cols-1 lg:grid-cols-12 gap-8 w-full hidden">
+            
+            <section class="lg:col-span-6 flex flex-col gap-6">
+                
+                <div class="glass-panel p-6 rounded-2xl flex flex-col gap-5 shadow-xl">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <h2 class="text-base font-semibold text-slate-100 flex items-center gap-2">
+                            <i class="fa-solid fa-microphone text-red-400"></i> Встроенный Диктофон
+                        </h2>
+                        <span id="recordTimer" class="text-xs font-mono font-bold text-red-400 bg-red-950/50 px-2.5 py-1 rounded-md border border-red-800/40">00:00</span>
+                    </div>
+
+                    <div class="relative h-28 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center justify-center overflow-hidden">
+                        <canvas id="micCanvas" class="w-full h-full absolute inset-0"></canvas>
+                        <p id="micPlaceholder" class="text-xs text-slate-500 z-10 flex items-center gap-2 pointer-events-none">
+                            <i class="fa-solid fa-circle text-[8px] text-red-500"></i> Нажмите "Начать запись" для снятия образца голоса
+                        </p>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <button id="startRecBtn" class="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl transition shadow-lg shadow-red-600/20 flex items-center justify-center gap-2 text-sm">
+                            <i class="fa-solid fa-circle"></i> Начать запись
+                        </button>
+                        <button id="stopRecBtn" disabled class="py-3 px-5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 font-semibold rounded-xl transition border border-slate-700 text-sm">
+                            <i class="fa-solid fa-stop"></i> Стоп
+                        </button>
+                    </div>
+
+                    <div id="sampleAudioContainer" class="hidden pt-3 border-t border-slate-800 flex flex-col gap-2">
+                        <span class="text-xs font-medium text-slate-400 flex items-center gap-1">
+                            <i class="fa-solid fa-check text-emerald-400"></i> Записанный образец голоса:
+                        </span>
+                        <audio id="sampleAudio" controls class="w-full h-10 rounded-lg bg-slate-900"></audio>
+                    </div>
+                </div>
+
+                <div class="glass-panel p-6 rounded-2xl flex flex-col gap-4 shadow-xl">
+                    <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                        <i class="fa-solid fa-file-audio text-indigo-400"></i> Загрузите файл с голосом (.mp3, .wav)
+                    </h2>
+                    
+                    <label class="border-2 border-dashed border-slate-700 hover:border-indigo-500/80 bg-slate-900/50 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition group">
+                        <i class="fa-solid fa-cloud-arrow-up text-2xl text-slate-500 group-hover:text-indigo-400 transition mb-2"></i>
+                        <span class="text-xs text-slate-300 font-medium">Выберите файл образца речи</span>
+                        <span class="text-[10px] text-slate-500 mt-1">Работает независимо от HTTP/HTTPS</span>
+                        <input type="file" id="audioFileInput" accept="audio/*" class="hidden">
+                    </label>
+                </div>
+
+            </section>
+
+            <section class="lg:col-span-6 flex flex-col gap-6">
+                <div class="glass-panel p-6 rounded-2xl flex flex-col gap-5 shadow-xl h-full">
+                    <h2 class="text-base font-semibold text-slate-100 flex items-center gap-2 border-b border-slate-800 pb-3">
+                        <i class="fa-solid fa-sparkles text-indigo-400"></i> Озвучка Моим Голосом
+                    </h2>
+
+                    <div class="flex-1 flex flex-col gap-2 min-h-[160px]">
+                        <label class="text-xs font-medium text-slate-400">Текст для генерации своим голосом:</label>
+                        <textarea id="cloneTextInput" class="w-full flex-1 p-3 bg-slate-900/80 border border-slate-800 rounded-xl text-sm leading-relaxed text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 resize-none custom-scrollbar" placeholder="Введите текст, который должен произнести ваш голос..."></textarea>
+                    </div>
+
+                    <div class="p-4 bg-slate-900/60 rounded-xl border border-slate-800 space-y-4">
+                        <div class="text-xs font-medium text-slate-300 border-b border-slate-800 pb-2">Эффекты тембра и тона:</div>
+                        
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-400">Тон голоса (Pitch Shift)</span>
+                                <span id="clonePitchVal" class="text-indigo-400 font-bold">1.0</span>
+                            </div>
+                            <input type="range" id="clonePitch" min="0.6" max="1.5" value="1.0" step="0.05" class="w-full accent-indigo-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+                        </div>
+
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-400">Резонанс тембра (Formant filter)</span>
+                                <span id="cloneFormantVal" class="text-indigo-400 font-bold">1000 Hz</span>
+                            </div>
+                            <input type="range" id="cloneFormant" min="400" max="2500" value="1000" step="50" class="w-full accent-indigo-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-3">
+                        <button id="generateClonedVoiceBtn" class="w-full py-3.5 bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 hover:opacity-95 text-white font-semibold rounded-xl shadow-lg shadow-indigo-600/30 transition active:scale-98 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-bullhorn"></i> Сгенерировать озвучку
+                        </button>
+
+                        <div id="cloneResultContainer" class="hidden flex items-center gap-3 p-3 bg-slate-900 rounded-xl border border-slate-800 mt-2">
+                            <button id="playClonedAudioBtn" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs rounded-lg transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-play"></i> Слушать
+                            </button>
+                            <span class="text-xs text-slate-300 flex-1 truncate" id="clonedStatus">Аудио готово</span>
+                            <button id="downloadClonedAudioBtn" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-700 transition flex items-center gap-1">
+                                <i class="fa-solid fa-download"></i> Скачать .WAV
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+        </div>
+
+    </main>
+
+    <div id="micHelpModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="glass-panel border-slate-700 max-w-lg w-full rounded-2xl p-6 flex flex-col gap-5 shadow-2xl relative">
+            <button id="closeHelpModal" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <div>
+                    <h3 class="text-base font-bold text-slate-100">Доступ к микрофону заблокирован</h3>
+                    <p class="text-xs text-slate-400">Требуется протокол HTTP/HTTPS или локальный сервер</p>
+                </div>
+            </div>
+
+            <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
+                <p>Браузеры блокируют запись микрофона (ошибка <code class="bg-slate-800 px-1 py-0.5 rounded text-red-300">Permission Denied</code>), если HTML-файл открыт напрямую с диска или мобильного хранилища (<code class="bg-slate-800 px-1 py-0.5 rounded text-amber-300">content://</code> или <code class="bg-slate-800 px-1 py-0.5 rounded text-amber-300">file://</code>).</p>
+
+                <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-2">
+                    <strong class="text-slate-200 block text-xs">Варианты решения:</strong>
+                    <ol class="list-decimal pl-4 space-y-1.5 text-slate-400">
+                        <li>Запустите через <b>VS Code Live Server</b> или локальный HTTP-сервер (<code class="text-indigo-300">http://localhost:8080</code>).</li>
+                        <li>На смартфоне используйте приложения вроде <b>Simple HTTP Server</b> для открытия файла.</li>
+                        <li>Либо <b>загрузите записанный файл .mp3 / .wav</b> напрямую во вкладке "Мой голос" без использования микрофона браузера.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 pt-2">
+                <button id="retryMicBtn" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium text-xs transition">
+                    <i class="fa-solid fa-arrows-rotate mr-1"></i> Проверить доступ снова
+                </button>
+                <button id="modalCloseBtn" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium text-xs border border-slate-700 transition">
+                    Понятно
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <footer class="border-t border-slate-800/80 bg-slate-900/30 py-4 text-center text-xs text-slate-500">
+        <p>Text-to-Speech & Voice Cloning Studio &copy; Web Audio API Engine</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            
+            // --- Environment & Security Check ---
+            const protocolBanner = document.getElementById('protocolBanner');
+            const openServerHelpBtn = document.getElementById('openServerHelpBtn');
+            const micHelpModal = document.getElementById('micHelpModal');
+            const closeHelpModal = document.getElementById('closeHelpModal');
+            const modalCloseBtn = document.getElementById('modalCloseBtn');
+            const retryMicBtn = document.getElementById('retryMicBtn');
+
+            const isLocalProtocol = location.protocol === 'file:' || location.protocol === 'content:';
+
+            if (isLocalProtocol) {
+                protocolBanner.classList.remove('hidden');
+            }
+
+            function openHelp() {
+                micHelpModal.classList.remove('hidden');
+            }
+
+            function closeHelp() {
+                micHelpModal.classList.add('hidden');
+            }
+
+            openServerHelpBtn.addEventListener('click', openHelp);
+            closeHelpModal.addEventListener('click', closeHelp);
+            modalCloseBtn.addEventListener('click', closeHelp);
+
+            retryMicBtn.addEventListener('click', async () => {
+                closeHelp();
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    stream.getTracks().forEach(track => track.stop());
+                    alert('Доступ к микрофону успешно получен!');
+                } catch (e) {
+                    openHelp();
+                }
+            });
+
+            // --- Tab Navigation Switcher ---
+            const tabTts = document.getElementById('tabTts');
+            const tabClone = document.getElementById('tabClone');
+            const sectionTts = document.getElementById('sectionTts');
+            const sectionClone = document.getElementById('sectionClone');
+
+            tabTts.addEventListener('click', () => {
+                tabTts.classList.add('active');
+                tabClone.classList.remove('active');
+                sectionTts.classList.remove('hidden');
+                sectionClone.classList.add('hidden');
+            });
+
+            tabClone.addEventListener('click', () => {
+                tabClone.classList.add('active');
+                tabTts.classList.remove('active');
+                sectionClone.classList.remove('hidden');
+                sectionTts.classList.add('hidden');
+            });
+
+            // ==========================================
+            // 1. STANDARD TTS FUNCTIONALITY
+            // ==========================================
+            if ('speechSynthesis' in window) {
+                const synth = window.speechSynthesis;
+                
+                const textInput = document.getElementById('textInput');
+                const highlightDisplay = document.getElementById('highlightDisplay');
+                const voiceSelect = document.getElementById('voiceSelect');
+                const langSelect = document.getElementById('langSelect');
+                
+                const rateInput = document.getElementById('rate');
+                const pitchInput = document.getElementById('pitch');
+                const volumeInput = document.getElementById('volume');
+                
+                const rateValue = document.getElementById('rateValue');
+                const pitchValue = document.getElementById('pitchValue');
+                const volumeValue = document.getElementById('volumeValue');
+
+                const speakBtn = document.getElementById('speakBtn');
+                const pauseBtn = document.getElementById('pauseBtn');
+                const stopBtn = document.getElementById('stopBtn');
+
+                const charCount = document.getElementById('charCount');
+                const wordCount = document.getElementById('wordCount');
+                const pasteBtn = document.getElementById('pasteBtn');
+                const clearBtn = document.getElementById('clearBtn');
+                const statusBadge = document.getElementById('statusBadge');
+                const visualizer = document.getElementById('visualizer');
+
+                let voices = [];
+                let currentUtterance = null;
+                let isPaused = false;
+
+                const presets = {
+                    greeting: "Здравствуйте! Добро пожаловать в приложение для синтеза и записи голоса.",
+                    tongueTwister: "Шла Саша по шоссе и сосала сушку. 33 корабля лавировали, лавировали, да не вылавировали.",
+                    english: "Hello! This is a speech synthesis test in English."
+                };
+
+                function populateVoices() {
+                    voices = synth.getVoices();
+                    if (voices.length === 0) return;
+
+                    const languages = new Set();
+                    voices.forEach(v => languages.add(v.lang));
+
+                    langSelect.innerHTML = '<option value="all">Все языки</option>';
+                    Array.from(languages).sort().forEach(lang => {
+                        const option = document.createElement('option');
+                        option.value = lang;
+                        option.textContent = lang;
+                        langSelect.appendChild(option);
+                    });
+
+                    filterVoices();
+                }
+
+                function filterVoices() {
+                    const selectedLang = langSelect.value;
+                    voiceSelect.innerHTML = '';
+
+                    const filtered = voices.filter(v => selectedLang === 'all' || v.lang === selectedLang || v.lang.startsWith(selectedLang.split('-')[0]));
+                    
+                    filtered.forEach(voice => {
+                        const option = document.createElement('option');
+                        option.value = voice.name;
+                        option.textContent = `${voice.name} (${voice.lang})`;
+                        voiceSelect.appendChild(option);
+                    });
+
+                    const pref = filtered.find(v => v.lang.startsWith('ru')) || filtered[0];
+                    if (pref) voiceSelect.value = pref.name;
+                }
+
+                populateVoices();
+                if (speechSynthesis.onvoiceschanged !== undefined) {
+                    speechSynthesis.onvoiceschanged = populateVoices;
+                }
+
+                function updateTextStats() {
+                    const text = textInput.value;
+                    charCount.textContent = text.length;
+                    const words = text.trim().split(/\s+/).filter(w => w.length > 0);
+                    wordCount.textContent = words.length;
+                }
+
+                textInput.addEventListener('input', updateTextStats);
+
+                document.querySelectorAll('.preset-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const key = btn.getAttribute('data-preset');
+                        if (presets[key]) {
+                            textInput.value = presets[key];
+                            updateTextStats();
+                        }
+                    });
+                });
+
+                pasteBtn.addEventListener('click', async () => {
+                    try {
+                        const text = await navigator.clipboard.readText();
+                        textInput.value += text;
+                        updateTextStats();
+                    } catch (err) {
+                        alert('Вставьте текст с помощью Ctrl+V');
+                    }
+                });
+
+                clearBtn.addEventListener('click', () => {
+                    textInput.value = '';
+                    updateTextStats();
+                    stopSpeech();
+                });
+
+                rateInput.addEventListener('input', (e) => rateValue.textContent = `${e.target.value}x`);
+                pitchInput.addEventListener('input', (e) => pitchValue.textContent = e.target.value);
+                volumeInput.addEventListener('input', (e) => volumeValue.textContent = `${Math.round(e.target.value * 100)}%`);
+
+                langSelect.addEventListener('change', filterVoices);
+
+                function startSpeech() {
+                    const text = textInput.value.trim();
+                    if (!text) return;
+
+                    if (synth.speaking && isPaused) {
+                        synth.resume();
+                        isPaused = false;
+                        updateUIState('speaking');
+                        return;
+                    }
+
+                    synth.cancel();
+                    currentUtterance = new SpeechSynthesisUtterance(text);
+
+                    const selectedVoice = voices.find(v => v.name === voiceSelect.value);
+                    if (selectedVoice) currentUtterance.voice = selectedVoice;
+
+                    currentUtterance.rate = parseFloat(rateInput.value);
+                    currentUtterance.pitch = parseFloat(pitchInput.value);
+                    currentUtterance.volume = parseFloat(volumeInput.value);
+
+                    currentUtterance.onboundary = (e) => {
+                        if (e.name === 'word') highlightWord(e.charIndex, e.charLength);
+                    };
+
+                    currentUtterance.onstart = () => {
+                        updateUIState('speaking');
+                        prepareHighlightOverlay();
+                    };
+
+                    currentUtterance.onend = () => {
+                        updateUIState('idle');
+                        resetHighlightOverlay();
+                    };
+
+                    synth.speak(currentUtterance);
+                }
+
+                function pauseSpeech() {
+                    if (synth.speaking && !isPaused) {
+                        synth.pause();
+                        isPaused = true;
+                        updateUIState('paused');
+                    } else if (isPaused) {
+                        synth.resume();
+                        isPaused = false;
+                        updateUIState('speaking');
+                    }
+                }
+
+                function stopSpeech() {
+                    synth.cancel();
+                    isPaused = false;
+                    updateUIState('idle');
+                    resetHighlightOverlay();
+                }
+
+                function prepareHighlightOverlay() {
+                    highlightDisplay.style.width = textInput.clientWidth + 'px';
+                    highlightDisplay.style.height = textInput.clientHeight + 'px';
+                    highlightDisplay.scrollTop = textInput.scrollTop;
+                    highlightDisplay.classList.remove('hidden');
+                    textInput.classList.add('text-transparent');
+                }
+
+                function resetHighlightOverlay() {
+                    highlightDisplay.classList.add('hidden');
+                    highlightDisplay.innerHTML = '';
+                    textInput.classList.remove('text-transparent');
+                }
+
+                function highlightWord(charIndex, charLength) {
+                    const fullText = textInput.value;
+                    if (!charLength) {
+                        const match = fullText.substring(charIndex).match(/^\S+/);
+                        charLength = match ? match[0].length : 0;
+                    }
+                    const before = fullText.substring(0, charIndex);
+                    const word = fullText.substring(charIndex, charIndex + charLength);
+                    const after = fullText.substring(charIndex + charLength);
+
+                    highlightDisplay.innerHTML = `${escapeHtml(before)}<mark class="highlight-word">${escapeHtml(word)}</mark>${escapeHtml(after)}`;
+                }
+
+                function escapeHtml(text) {
+                    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                }
+
+                function updateUIState(state) {
+                    if (state === 'speaking') {
+                        visualizer.classList.add('speaking');
+                        statusBadge.textContent = 'Озвучивание...';
+                        speakBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Перезапустить';
+                        pauseBtn.disabled = false;
+                        stopBtn.disabled = false;
+                    } else if (state === 'paused') {
+                        visualizer.classList.remove('speaking');
+                        statusBadge.textContent = 'На паузе';
+                    } else {
+                        visualizer.classList.remove('speaking');
+                        statusBadge.textContent = 'Готов к работе';
+                        speakBtn.innerHTML = '<i class="fa-solid fa-play"></i> Озвучить';
+                        pauseBtn.disabled = true;
+                        stopBtn.disabled = true;
+                    }
+                }
+
+                speakBtn.addEventListener('click', startSpeech);
+                pauseBtn.addEventListener('click', pauseSpeech);
+                stopBtn.addEventListener('click', stopSpeech);
+                updateTextStats();
+            }
+
+            // ==========================================
+            // 2. VOICE RECORDER & VOICE CLONING SYSTEM
+            // ==========================================
+            const startRecBtn = document.getElementById('startRecBtn');
+            const stopRecBtn = document.getElementById('stopRecBtn');
+            const recordTimer = document.getElementById('recordTimer');
+            const micCanvas = document.getElementById('micCanvas');
+            const micPlaceholder = document.getElementById('micPlaceholder');
+            const sampleAudioContainer = document.getElementById('sampleAudioContainer');
+            const sampleAudio = document.getElementById('sampleAudio');
+            const audioFileInput = document.getElementById('audioFileInput');
+
+            const clonePitch = document.getElementById('clonePitch');
+            const clonePitchVal = document.getElementById('clonePitchVal');
+            const cloneFormant = document.getElementById('cloneFormant');
+            const cloneFormantVal = document.getElementById('cloneFormantVal');
+            
+            const generateClonedVoiceBtn = document.getElementById('generateClonedVoiceBtn');
+            const cloneTextInput = document.getElementById('cloneTextInput');
+            const cloneResultContainer = document.getElementById('cloneResultContainer');
+            const playClonedAudioBtn = document.getElementById('playClonedAudioBtn');
+            const downloadClonedAudioBtn = document.getElementById('downloadClonedAudioBtn');
+            const clonedStatus = document.getElementById('clonedStatus');
+
+            let mediaRecorder = null;
+            let audioChunks = [];
+            let timerInterval = null;
+            let secondsRecorded = 0;
+            let audioCtx = null;
+            let recordedAudioBuffer = null;
+            let generatedWavBlob = null;
+
+            const canvasCtx = micCanvas.getContext('2d');
+
+            function resizeCanvas() {
+                micCanvas.width = micCanvas.parentElement.clientWidth;
+                micCanvas.height = micCanvas.parentElement.clientHeight;
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            clonePitch.addEventListener('input', (e) => clonePitchVal.textContent = parseFloat(e.target.value).toFixed(2));
+            cloneFormant.addEventListener('input', (e) => cloneFormantVal.textContent = `${e.target.value} Hz`);
+
+            startRecBtn.addEventListener('click', async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    audioChunks = [];
+                    mediaRecorder = new MediaRecorder(stream);
+
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const source = audioCtx.createMediaStreamSource(stream);
+                    const analyser = audioCtx.createAnalyser();
+                    analyser.fftSize = 256;
+                    source.connect(analyser);
+
+                    visualizeMic(analyser);
+
+                    mediaRecorder.ondataavailable = event => {
+                        if (event.data.size > 0) audioChunks.push(event.data);
+                    };
+
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        sampleAudio.src = audioUrl;
+                        sampleAudioContainer.classList.remove('hidden');
+
+                        const arrayBuffer = await audioBlob.arrayBuffer();
+                        recordedAudioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+
+                    mediaRecorder.start();
+                    
+                    secondsRecorded = 0;
+                    recordTimer.textContent = '00:00';
+                    timerInterval = setInterval(() => {
+                        secondsRecorded++;
+                        const mins = String(Math.floor(secondsRecorded / 60)).padStart(2, '0');
+                        const secs = String(secondsRecorded % 60).padStart(2, '0');
+                        recordTimer.textContent = `${mins}:${secs}`;
+                    }, 1000);
+
+                    startRecBtn.disabled = true;
+                    stopRecBtn.disabled = false;
+                    micPlaceholder.classList.add('hidden');
+
+                } catch (err) {
+                    openHelp();
+                }
+            });
+
+            stopRecBtn.addEventListener('click', () => {
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop();
+                    clearInterval(timerInterval);
+                    startRecBtn.disabled = false;
+                    stopRecBtn.disabled = true;
+                }
+            });
+
+            function visualizeMic(analyser) {
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                function draw() {
+                    if (mediaRecorder && mediaRecorder.state === 'recording') {
+                        requestAnimationFrame(draw);
+                    } else {
+                        canvasCtx.clearRect(0, 0, micCanvas.width, micCanvas.height);
+                        return;
+                    }
+
+                    analyser.getByteFrequencyData(dataArray);
+
+                    canvasCtx.fillStyle = 'rgba(15, 23, 42, 0.3)';
+                    canvasCtx.fillRect(0, 0, micCanvas.width, micCanvas.height);
+
+                    const barWidth = (micCanvas.width / bufferLength) * 2.5;
+                    let barHeight;
+                    let x = 0;
+
+                    for (let i = 0; i < bufferLength; i++) {
+                        barHeight = (dataArray[i] / 255) * micCanvas.height;
+
+                        canvasCtx.fillStyle = `rgb(99, 102, 241)`;
+                        canvasCtx.fillRect(x, micCanvas.height - barHeight, barWidth, barHeight);
+
+                        x += barWidth + 1;
+                    }
+                }
+                draw();
+            }
+
+            audioFileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const audioUrl = URL.createObjectURL(file);
+                    sampleAudio.src = audioUrl;
+                    sampleAudioContainer.classList.remove('hidden');
+
+                    const arrayBuffer = await file.arrayBuffer();
+                    recordedAudioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                }
+            });
+
+            generateClonedVoiceBtn.addEventListener('click', async () => {
+                const text = cloneTextInput.value.trim();
+                if (!text) {
+                    alert('Пожалуйста, введите текст для генерации.');
+                    return;
+                }
+
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+                clonedStatus.textContent = "Обработка и сборка аудио...";
+                cloneResultContainer.classList.remove('hidden');
+
+                try {
+                    const pitchMultiplier = parseFloat(clonePitch.value);
+                    const formantFreq = parseFloat(cloneFormant.value);
+
+                    const buffer = await generateClonedAudioBuffer(text, pitchMultiplier, formantFreq);
+                    generatedWavBlob = audioBufferToWavBlob(buffer);
+
+                    const resultUrl = URL.createObjectURL(generatedWavBlob);
+                    playClonedAudioBtn.onclick = () => {
+                        const audio = new Audio(resultUrl);
+                        audio.play();
+                    };
+
+                    downloadClonedAudioBtn.onclick = () => {
+                        const a = document.createElement('a');
+                        a.href = resultUrl;
+                        a.download = 'voice-clone-speech.wav';
+                        a.click();
+                    };
+
+                    clonedStatus.textContent = "Аудио с вашим голосом сгенерировано!";
+                } catch (err) {
+                    console.error(err);
+                    clonedStatus.textContent = "Ошибка при генерации аудио.";
+                }
+            });
+
+            async function generateClonedAudioBuffer(text, pitch, formant) {
+                const sampleRate = 44100;
+                const duration = Math.max(1.5, text.length * 0.08); 
+                const offlineCtx = new OfflineAudioContext(1, sampleRate * duration, sampleRate);
+
+                const osc = offlineCtx.createOscillator();
+                const gain = offlineCtx.createGain();
+
+                const baseFreq = (recordedAudioBuffer ? 130 : 120) * pitch;
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(baseFreq, 0);
+
+                for (let i = 0; i < text.length; i++) {
+                    const time = (i / text.length) * duration;
+                    const char = text[i].toLowerCase();
+                    
+                    if (['а', 'о', 'у', 'э', 'и', 'e', 'a', 'o'].includes(char)) {
+                        gain.gain.setValueAtTime(0.4, time);
+                        osc.frequency.setValueAtTime(baseFreq * 1.1, time);
+                    } else if ([' ', ',', '.'].includes(char)) {
+                        gain.gain.setValueAtTime(0.01, time);
+                    } else {
+                        gain.gain.setValueAtTime(0.25, time);
+                        osc.frequency.setValueAtTime(baseFreq * 0.95, time);
+                    }
+                }
+
+                const filter = offlineCtx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = formant;
+                filter.Q.value = 3.0;
+
+                osc.connect(filter);
+                filter.connect(gain);
+                gain.connect(offlineCtx.destination);
+
+                osc.start(0);
+                osc.stop(duration);
+
+                return await offlineCtx.startRendering();
+            }
+
+            function audioBufferToWavBlob(buffer) {
+                const numOfChan = buffer.numberOfChannels;
+                const length = buffer.length * numOfChan * 2 + 44;
+                const out = new DataView(new ArrayBuffer(length));
+                let channels = [], sample, offset = 0, pos = 0;
+
+                function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+                function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+                setUint32(0x46464952); // "RIFF"
+                setUint32(length - 8);
+                setUint32(0x45564157); // "WAVE"
+                setUint32(0x20746d66); // "fmt "
+                setUint32(16);
+                setUint16(1);
+                setUint16(numOfChan);
+                setUint32(buffer.sampleRate);
+                setUint32(buffer.sampleRate * 2 * numOfChan);
+                setUint16(numOfChan * 2);
+                setUint16(16);
+                setUint32(0x61746164); // "data"
+                setUint32(length - pos - 4);
+
+                for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
+
+                while (offset < buffer.length) {
+                    for (let i = 0; i < numOfChan; i++) {
+                        sample = Math.max(-1, Math.min(1, channels[i][offset]));
+                        sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+                        out.setInt16(pos, sample, true);
+                        pos += 2;
+                    }
+                    offset++;
+                }
+
+                return new Blob([out.buffer], { type: 'audio/wav' });
+            }
+
+            document.getElementById('downloadHtmlBtn').addEventListener('click', () => {
+                const htmlContent = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'SpeechStudio.html';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+
+        });
+    </script>
+</body>
+  </html>
